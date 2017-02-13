@@ -5,6 +5,7 @@ import akka.stream.scaladsl.Source
 import stages.{Event, EventReader, EventsSource}
 
 import scala.concurrent.Future
+import scala.util.control.NoStackTrace
 
 /**
   * Created on 2017-02-12.
@@ -25,9 +26,9 @@ object Main extends App {
       i <- 1 until 30
     } yield Sample(i, s"Event: ${i.toString}")
     
-    override def read(offset: Long, count: Int): Future[Seq[Sample]] = Future.successful(events.filter(_.id >= offset).take(count))
+    override def read(offset: Long, count: Int): Future[Seq[Sample]] = Future.failed(new Exception("Hello") with NoStackTrace)
   }
   
-  Source.fromGraph(new EventsSource(new SampleReader(), 5)).runForeach(println)
+  Source.fromGraph(EventsSource(new SampleReader(), 5)).runForeach(println)
   
 }

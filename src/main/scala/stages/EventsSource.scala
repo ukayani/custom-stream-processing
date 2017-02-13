@@ -7,18 +7,26 @@ import scala.collection.mutable
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 import Event._
+import scala.concurrent.duration._
+import scala.language.postfixOps
+
+import EventsSource._
 
 /**
   * Created on 2017-02-12.
   */
 
-class EventsSource[E <: Event](reader: EventReader[E], count: Int) extends GraphStage[SourceShape[E]] {
+class EventsSource[E <: Event](reader: EventReader[E], 
+                               count: Int, 
+                               backoffOptions: BackoffOptions = DefaultBackoffOptions) extends GraphStage[SourceShape[E]] {
 
   val out: Outlet[E] = Outlet("EventSource")
   override val shape: SourceShape[E] = SourceShape(out)
 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic =
-    new GraphStageLogic(shape) with StageLogging {
+    new TimerGraphStageLogic(shape) with BackOff with StageLogging {
+
+      val backoff: BackoffOptions = backoffOptions
       
       val buffer = mutable.Queue[E]()
       def bufferRoom = math.max(0, count - buffer.size)
@@ -37,6 +45,9 @@ class EventsSource[E <: Event](reader: EventReader[E], count: Int) extends Graph
       
       def receivedEvents(events: Seq[E]) = {
         log.debug(s"Received Events ${events.size}")
+        
+        resetBackoff()
+        
         isReading = false
         
         offset = if (events.nonEmpty) events.max.id + 1 else offset
@@ -49,7 +60,8 @@ class EventsSource[E <: Event](reader: EventReader[E], count: Int) extends Graph
       def receiveFailed(ex: Throwable) = {
         log.error(ex, "Receive Failed")
         isReading = false
-        // todo reschedule pull or failstage
+
+        scheduleWithBackOff(None)
       }
       
       setHandler(out, new OutHandler {
@@ -58,6 +70,8 @@ class EventsSource[E <: Event](reader: EventReader[E], count: Int) extends Graph
           tryRead()
         }
       })
+
+      override protected def onTimer(timerKey: Any): Unit = tryRead()  
       
       def tryPush() = if (buffer.nonEmpty && !isClosed(out) && isAvailable(out)) {
         log.debug("Pushing element")
@@ -76,4 +90,17 @@ class EventsSource[E <: Event](reader: EventReader[E], count: Int) extends Graph
           case Failure(ex) => failure.invoke(ex)
       }(materializer.executionContext)
     }
+}
+
+object EventsSource {
+  val DefaultFetchCount = 100
+  val DefaultBackoffOptions = BackoffOptions(10 seconds, 60 seconds, randomFactor = 0.2)
+  
+  def apply[E <: Event](reader: EventReader[E], 
+                        count: Int = DefaultFetchCount, 
+                        backoffOptions: BackoffOptions = DefaultBackoffOptions) = {
+
+    
+    new EventsSource(reader, count, backoffOptions)
+  }
 }
