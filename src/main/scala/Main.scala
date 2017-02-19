@@ -26,7 +26,7 @@ object Main extends App {
       i <- 1 until 30
     } yield Sample(i, s"Event: ${i.toString}")
     
-    override def read(offset: Long, count: Int): Future[Seq[Sample]] = Future.failed(new Exception("Hello") with NoStackTrace)
+    override def read(offset: Long, count: Int): Future[Seq[Sample]] = Future.successful(events.filter(offset <= _.id).take(count))
   }
   
   Source.fromGraph(EventsSource(new SampleReader(), 5)).runForeach(println)

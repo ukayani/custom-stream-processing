@@ -7,10 +7,11 @@ import scala.collection.mutable
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 import Event._
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
 import EventsSource._
+import dispatcher.ExecutionContexts
 
 /**
   * Created on 2017-02-12.
@@ -86,7 +87,7 @@ class EventsSource[E <: Event](reader: EventReader[E],
         future.onComplete {
           case Success(t) => success.invoke(t)
           case Failure(ex) => failure.invoke(ex)
-      }(materializer.executionContext)
+      }(ExecutionContexts.sameThreadExecutionContext)
       
       
       setHandler(out, this)
