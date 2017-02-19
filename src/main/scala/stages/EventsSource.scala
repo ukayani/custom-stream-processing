@@ -24,7 +24,7 @@ class EventsSource[E <: Event](reader: EventReader[E],
   override val shape: SourceShape[E] = SourceShape(out)
 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic =
-    new TimerGraphStageLogic(shape) with BackOff with StageLogging {
+    new TimerGraphStageLogic(shape) with BackOff with OutHandler with StageLogging {
 
       val backoff: BackoffOptions = backoffOptions
       
@@ -63,13 +63,11 @@ class EventsSource[E <: Event](reader: EventReader[E],
 
         scheduleWithBackOff(None)
       }
-      
-      setHandler(out, new OutHandler {
-        override def onPull():Unit = {
-          tryPush()
-          tryRead()
-        }
-      })
+
+      override def onPull(): Unit = {
+        tryPush()
+        tryRead()
+      }
 
       override protected def onTimer(timerKey: Any): Unit = tryRead()  
       
@@ -89,6 +87,9 @@ class EventsSource[E <: Event](reader: EventReader[E],
           case Success(t) => success.invoke(t)
           case Failure(ex) => failure.invoke(ex)
       }(materializer.executionContext)
+      
+      
+      setHandler(out, this)
     }
 }
 
